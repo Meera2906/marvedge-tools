@@ -455,7 +455,109 @@ SELECT key FROM rate_limit_counters LIMIT 5;
 
 ---
 
-## 5. T-00036 Release Blockers (Not Yet Implemented)
+## 5. Stage 6 Frontend Verification Walkthrough (Browser UI)
+
+The following procedures verify the interactive client-side creator management dashboard (`CreatorLinkManager`), local storage persistence (`useCreatorLinks`), creator token notices (`CreatorTokenNotice`), and status lifecycle.
+
+### Scenario 15: Create Short Link and Receive Creator Management Key
+
+1. Start the development server (`pnpm dev`) and navigate to `http://localhost:3000/link-shortener`.
+2. In the URL field, paste `https://example.com/test-landing`.
+3. Click **"Shorten Now"**.
+4. **Expected UI State:**
+   - **Short link ready** banner appears containing `/go/:code`, a **Copy** button, and (if enabled) the QR code PNG download card.
+   - **Creator Token Notice** appears with amber accent styling, displaying:
+     - Clear warning: _"Important: This key is the only way to edit, view statistics, change passwords, or disable your link. Lost keys cannot be recovered."_
+     - The 43-character base64url creator token inside a selectable input box.
+     - **Copy Key** button that copies the raw token to clipboard.
+     - Confirmation note: _"Saved automatically to your device’s browser storage for quick management below."_
+5. Open browser DevTools (`F12` -> Application -> Local Storage):
+   - Key `mrv_creator_links` exists containing a JSON array with `{ code, creatorToken, url, createdAt }`.
+
+---
+
+### Scenario 16: Local Link Management Dashboard (`CreatorLinkManager`)
+
+1. Scroll down on `http://localhost:3000/link-shortener` to **"Manage Your Short Links"**.
+2. **Expected Card Display:**
+   - Header shows `/go/:code` with an external link icon and quick **Copy** button.
+   - Target destination URL displayed (`https://example.com/test-landing`).
+   - Status badge displays **Active** in green (`border-emerald-500`).
+   - Metrics grid displays:
+     - **Clicks:** `0`
+     - **Last Clicked:** `Never`
+     - **Created:** Current date and time
+     - **Expires:** `Never`
+   - Action toolbar contains: **Disable Link**, **Edit Expiry**, **Password**, **Copy Key**, **Forget**, and a **Refresh** button.
+
+---
+
+### Scenario 17: Creator Disabling and Re-enabling Link
+
+1. On the link card in **Manage Your Short Links**, click **"Disable Link"**.
+2. **Expected UI State:**
+   - Button briefly shows loading spinner.
+   - Success alert appears: _"Link successfully disabled."_
+   - Status badge switches to **Disabled** in neutral gray.
+   - Button text switches to **"Enable Link"**.
+3. In a new browser tab, navigate to `http://localhost:3000/go/:code`.
+   - **Expected:** Server returns `HTTP 410 Gone` rendering the _"This link has been disabled by its creator"_ page.
+4. Back in the manager tab, click **"Enable Link"**.
+   - Status badge switches back to **Active**.
+5. Re-visit `http://localhost:3000/go/:code` in the second tab.
+   - **Expected:** Server returns `HTTP 302 Found` redirecting immediately to `https://example.com/test-landing`.
+6. Return to `http://localhost:3000/link-shortener` and click the **Refresh** icon on the card:
+   - **Clicks** counter updates from `0` to `1`.
+   - **Last Clicked** updates from `Never` to the recent timestamp.
+
+---
+
+### Scenario 18: Update Password and Expiration
+
+1. On the link card, click **"Password"**:
+   - Sub-panel opens with password input.
+   - Enter `my-secret-123` and click **"Set Password"**.
+   - Alert displays: _"Password updated."_
+2. Navigate to `http://localhost:3000/go/:code`:
+   - Password prompt form is displayed (`HTTP 200`). Destination URL is not disclosed.
+   - Enter `my-secret-123` and submit. Browser redirects (`HTTP 302`) to target destination.
+3. In the link card, click **"Password"** -> **"Remove Password"**:
+   - Alert displays: _"Password protection removed."_
+4. Click **"Edit Expiry"**:
+   - Select preset **"24 hours"** from dropdown and click **"Save Expiry"**.
+   - Expiration metric updates from `Never` to the calculated 24-hour timestamp.
+
+---
+
+### Scenario 19: Forget Link & Import Key from Another Device
+
+1. On the link card, click **"Forget"**.
+2. Click **"Yes"** to confirm deletion from local storage.
+3. **Expected UI State:**
+   - Card is removed from the manager list.
+   - If no other links exist, the empty state displays: _"No saved links on this device"_.
+4. Click **"Import Link Key"** in the section header.
+5. Enter the short code (e.g. `summer-sale`) and the previously copied creator token.
+6. Click **"Import & Verify"**:
+   - Link is verified against the server and re-added to local storage.
+   - Card re-appears with full historical click stats and management controls restored.
+
+---
+
+### Scenario 20: Moderated & Blocked Link State Safeguards
+
+1. If a link has received abuse reports and escalated to `pending_review`:
+   - Status badge displays amber **Under Review** pill.
+   - Warning banner displays: _"Under Community Review: This link received reports and displays an interstitial warning to visitors. It cannot be re-activated until an administrator reviews it."_
+   - Creator **Enable Link** button is disabled to prevent bypassing moderation.
+2. If an administrator blocked the link via `/api/admin/links/status`:
+   - Status badge displays red **Blocked** pill.
+   - Warning banner displays: _"Blocked: This link was disabled by administrators for security or policy violations. It cannot be edited or reactivated."_
+   - All editing actions (**Enable**, **Edit Expiry**, **Password**) are disabled.
+
+---
+
+## 6. T-00036 Release Blockers (Not Yet Implemented)
 
 The following items must be resolved before general public release:
 
