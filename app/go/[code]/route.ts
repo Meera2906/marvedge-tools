@@ -295,5 +295,21 @@ export async function POST(
   { params }: { params: Promise<{ code: string }> },
 ): Promise<Response> {
   const { code } = await params;
-  return handleGoPostService(request, code);
+  const response = await handleGoPostService(request, code);
+
+  if (response.status === 401) {
+    return new Response(
+      passwordForm(code, "Incorrect password. Please check your password and try again."),
+      {
+        status: 401,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "X-Robots-Tag": "noindex",
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+  }
+
+  return response;
 }
